@@ -1,0 +1,46 @@
+/* Shared styles for the Terms of Service and Privacy Policy pages. */
+:root {
+  --ground: #eee6d6;
+  --surface: #f5eddf;
+  --ink: #29251d;
+  --ink-muted: #5a4f40;
+  --primary: #35422d;
+  --line: rgba(41, 37, 29, 0.22);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #1f1c17;
+    --surface: #2a261f;
+    --ink: #eee6d6;
+    --ink-muted: #c4b8a3;
+    --primary: #b9b28b;
+    --line: rgba(238, 230, 214, 0.2);
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font: 16px/1.7 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  padding: 40px 16px 64px;
+}
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 32px clamp(20px, 5vw, 48px) 40px;
+}
+h1, h2 { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; line-height: 1.25; }
+h1 { font-size: 2.1rem; margin: 0 0 4px; }
+h2 { font-size: 1.3rem; margin: 32px 0 8px; }
+.meta { color: var(--ink-muted); margin: 0 0 24px; font-size: 0.95rem; }
+p, li { overflow-wrap: anywhere; }
+ul { padding-left: 1.3em; }
+li + li { margin-top: 4px; }
+a { color: var(--primary); text-underline-offset: 3px; }
+nav { margin-top: 36px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 0.95rem; display: flex; gap: 20px; flex-wrap: wrap; }
