@@ -1,0 +1,30 @@
+// Cloudflare Workers configuration. See README.md "Deploying to Cloudflare".
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "terrest",
+  "main": "server/worker.js",
+  "compatibility_date": "2026-11-01",
+
+  // The built client (npm run build). Only API and socket requests run the
+  // Worker; everything else is served straight from the assets.
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/ws", "/.proxy/*"]
+  },
+
+  // One TableRoom per table, stored in SQLite (the kind the free plan allows).
+  "durable_objects": {
+    "bindings": [{ "name": "ROOMS", "class_name": "TableRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TableRoom"] }],
+
+  // Production default. Local development turns it on through .env.
+  // VITE_DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET and DISCORD_BOT_TOKEN are set
+  // in the Cloudflare dashboard; keep_vars stops a deploy from erasing them.
+  "vars": { "DEV_LOGIN": "false" },
+  "keep_vars": true,
+
+  "observability": { "enabled": true }
+}

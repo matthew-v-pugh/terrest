@@ -21,7 +21,9 @@ export default function DevLogin({ onJoin }) {
       storage.set('terrest:id', id);
     }
     storage.set('terrest:name', username);
-    onJoin({ instanceId: room.trim() || 'local', devUser: { id, username } });
+    // Table codes are letters, digits and dashes; anything else becomes a dash.
+    const code = room.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').slice(0, 60) || 'local';
+    onJoin({ instanceId: code, devUser: { id, username } });
   }
 
   return (

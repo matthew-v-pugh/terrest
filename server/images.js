@@ -11,6 +11,19 @@
 // The result is a fresh data URL built from the cleaned bytes, or null.
 
 const PREFIX = 'data:image/jpeg;base64,';
+// Plain Uint8Array helpers, so this runs in Cloudflare Workers as well as Node.
+const fromBase64 = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+function toBase64(bytes) {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+function concat(parts) {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const p of parts) { out.set(p, at); at += p.length; }
+  return out;
+}
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 
 // Start-of-frame markers carry the image size: SOF0–3, 5–7, 9–11, 13–15.
@@ -24,7 +37,8 @@ export function cleanJpegDataUrl(value, { maxSide, maxChars }) {
   if (typeof value !== 'string' || value.length > maxChars || !value.startsWith(PREFIX)) return null;
   const b64 = value.slice(PREFIX.length);
   if (b64.length % 4 !== 0 || !BASE64_RE.test(b64)) return null;
-  const buf = Buffer.from(b64, 'base64');
+  const buf = fromBase64(b64);
+  const u16 = (i) => (buf[i] << 8) | buf[i + 1];
 
   // SOI
   if (buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8) return null;
@@ -41,14 +55,14 @@ export function cleanJpegDataUrl(value, { maxSide, maxChars }) {
     // Standalone markers have no length field; none are valid before SOS.
     if (marker === 0xd8 || marker === 0xd9 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) return null;
     if (pos + 2 > buf.length) return null;
-    const len = buf.readUInt16BE(pos);
+    const len = u16(pos);
     if (len < 2 || pos + len > buf.length) return null;
     const segment = buf.subarray(pos - 2, pos + len); // marker + length + payload
 
     if (isSof(marker)) {
       if (size || len < 8) return null; // exactly one frame header
-      const height = buf.readUInt16BE(pos + 3);
-      const width = buf.readUInt16BE(pos + 5);
+      const height = u16(pos + 3);
+      const width = u16(pos + 5);
       // A height of 0 defers the real size to a later DNL marker; refuse it.
       if (!width || !height || width > maxSide || height > maxSide) return null;
       size = { width, height };
@@ -64,6 +78,6 @@ export function cleanJpegDataUrl(value, { maxSide, maxChars }) {
     pos += len;
   }
 
-  const out = PREFIX + Buffer.concat(kept).toString('base64');
+  const out = PREFIX + toBase64(concat(kept));
   return out.length <= maxChars ? out : null;
 }

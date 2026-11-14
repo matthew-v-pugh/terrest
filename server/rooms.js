@@ -1,12 +1,13 @@
-// One Room per Discord activity instance. The server owns the game state and
+// The game state of one table (one Discord activity instance). It lives inside
+// a Durable Object (see worker.js), which stores it and hands it sockets. It owns the game state and
 // pushes a per-member view after every change (hidden rolls, pocketed items and
 // private log lines are redacted for everyone except the owner and storyteller;
 // private chat messages reach only their sender and recipients).
-import { randomInt, randomUUID } from 'node:crypto';
 import {
   BACKGROUNDS, DEFAULT_PLAYER_CONTROLS, DICE, PLAYER_COLORS, PLAYER_CONTROLS, TABLE_PRESETS,
 } from '../shared/presets.js';
 import { diffCharacter } from './diff.js';
+import { randomInt, randomUUID } from './random.js';
 import {
   GameError, clampInt, obj, sanitizeCharacter, sanitizeConfig, sanitizeControls, sanitizeScene,
   sanitizeSceneBackground, sanitizeSceneTable, str,
@@ -18,28 +19,15 @@ const MAX_CHAT_CHARS = 300;
 // At most CHAT_BURST messages per CHAT_WINDOW_MS from one person.
 const CHAT_BURST = 5;
 const CHAT_WINDOW_MS = 5000;
-const EMPTY_ROOM_TTL_MS = 30 * 60 * 1000;
 // Every scene upload is pushed to every member, so cap how often they can come.
 const SCENE_UPLOAD_LIMIT = 6;
 const SCENE_UPLOAD_WINDOW_MS = 60 * 1000;
 
-export class RoomManager {
-  rooms = new Map();
+const newMember = (fields) => ({ ...fields, sockets: new Set(), lastRoll: 0, chatTimes: [] });
 
-  get(id) {
-    let room = this.rooms.get(id);
-    if (!room) {
-      room = new Room(id, () => this.rooms.delete(id));
-      this.rooms.set(id, room);
-    }
-    return room;
-  }
-}
-
-class Room {
-  constructor(id, onExpire) {
+export class Room {
+  constructor(id) {
     this.id = id;
-    this.onExpire = onExpire;
     this.members = new Map();
     this.storytellerId = null;
     this.config = null;
@@ -48,17 +36,41 @@ class Room {
     // 'scene' message so large uploads aren't resent with every state update.
     this.scene = null;
     this.sceneUploads = []; // timestamps of recent scene uploads, for rate limiting
-    this.log = []; // rolls and events, oldest first
-    this.expiryTimer = null;
+    this.log = []; // rolls, events and chat, oldest first
+  }
+
+  // Storable state, split so no single stored value gets large: uploaded
+  // portraits live with their member, uploaded scene images in `scene`.
+  // Sockets and rate-limit timers are left out.
+  serialize() {
+    return {
+      meta: {
+        id: this.id, storytellerId: this.storytellerId, config: this.config, controls: this.controls, log: this.log,
+      },
+      scene: this.scene,
+      members: [...this.members.values()].map(({
+        sockets, lastRoll, chatTimes, ...m
+      }) => m),
+    };
+  }
+
+  static restore({ meta, scene, members }) {
+    const room = new Room(meta.id);
+    Object.assign(room, {
+      storytellerId: meta.storytellerId, config: meta.config, controls: meta.controls, log: meta.log, scene: scene ?? null,
+    });
+    for (const m of members) room.members.set(m.id, newMember(m));
+    return room;
+  }
+
+  hasOnline() {
+    return [...this.members.values()].some((m) => m.sockets.size);
   }
 
   connect(user, ws) {
-    clearTimeout(this.expiryTimer);
     let m = this.members.get(user.id);
     if (!m) {
-      m = {
-        id: user.id, color: this.pickColor(), role: null, character: null, sockets: new Set(), lastRoll: 0, chatTimes: [],
-      };
+      m = newMember({ id: user.id, color: this.pickColor(), role: null, character: null });
       this.members.set(user.id, m);
     }
     m.username = user.username;
@@ -74,9 +86,6 @@ class Room {
     m.sockets.delete(ws);
     // Members who never picked a role have nothing worth keeping around.
     if (!m.sockets.size && !m.role && !m.character) this.members.delete(userId);
-    if (![...this.members.values()].some((x) => x.sockets.size)) {
-      this.expiryTimer = setTimeout(this.onExpire, EMPTY_ROOM_TTL_MS);
-    }
     this.broadcast();
   }
 

@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
-const apiPort = process.env.PORT || 3001;
+// `wrangler dev` runs the Worker here (see the dev:worker script).
+const apiPort = 8787;
 
 export default defineConfig({
   root: path.join(rootDir, 'client'),

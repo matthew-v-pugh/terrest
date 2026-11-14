@@ -58,26 +58,32 @@ takes a seat. Everyone rolls dice at a shared table.
 
 ```
 client/   React UI (Vite). Authenticates with the Discord Embedded App SDK.
-server/   Express + ws. Exchanges the OAuth code and holds one Room per activity
-          instance (sdk.instanceId). Validates every action, rolls dice, and
-          pushes each member a view of the state (hidden rolls redacted).
+server/   A Cloudflare Worker (worker.js). It exchanges the OAuth code, serves
+          the built client, and routes each WebSocket to a TableRoom Durable
+          Object: one per activity instance (sdk.instanceId). rooms.js holds
+          the game itself: it validates every action, rolls dice, and pushes
+          each member a view of the state (hidden rolls and private chat redacted).
 shared/   Presets used by both sides (game types, resources, slots, backgrounds).
 ```
 
-Game state lives in memory. A room is dropped 30 minutes after its last player
-leaves, and everything resets when the server restarts. Reconnecting players get
-their seat and character back.
+Each table is stored in its Durable Object, so games survive deploys, restarts
+and quiet spells. The object hibernates while nobody is sending anything, so idle
+tables cost nothing. A table is deleted 30 minutes after its last player leaves.
+Reconnecting players get their seat and character back.
 
 ## Local development (no Discord needed)
 
 ```bash
 cp .env.example .env      # DEV_LOGIN=true lets browser tabs join
 npm install
-npm run dev
+npm run dev               # Vite on :5173, the Worker (wrangler dev) on :8787
 ```
 
 Open http://localhost:5173 in a few tabs (or windows). Each tab is a separate
 person, so you can be the storyteller in one and players in the others.
+`wrangler dev` reads the same `.env` and keeps local tables in `.wrangler/state`.
+`npm run preview` builds the client and serves everything from the Worker on :8787,
+as production does.
 
 ## Running inside Discord
 
@@ -91,21 +97,35 @@ person, so you can be the storyteller in one and players in the others.
    ```bash
    cloudflared tunnel --url http://localhost:5173
    ```
-4. **Activities → URL Mappings:** map `/` to the tunnel host (without `https://`).
+   Or deploy it (below) and use the `workers.dev` address.
+4. **Activities → URL Mappings:** map `/` to the tunnel or Worker host (without `https://`).
 5. **Activities → Settings:** enable Activities.
 6. In a Discord voice channel, open the Activity launcher and pick your app.
    While it's unverified, only you and the app's testers can see it.
 
-## Production
+## Deploying to Cloudflare (free plan)
 
-```bash
-npm run build   # builds the client into dist/
-npm start       # serves dist/ plus /api and /ws on $PORT
-```
+Cloudflare builds and deploys from GitHub on every push.
 
-Set `DEV_LOGIN=false` in production: opening the app outside Discord then shows
-"Open Terrest in Discord" instead of the test login. Point the Activity URL
-mapping at your deployed host.
+1. In the Cloudflare dashboard: **Workers & Pages → Create → Import a repository**,
+   and pick this repo. Keep the Worker name `terrest` (it must match `name` in
+   `wrangler.jsonc`).
+   - Production branch: the branch you deploy from (e.g. `cloudflare-workers`).
+   - Build command: `npm run build`. Deploy command: `npx wrangler deploy`.
+   - Build variables: `VITE_DISCORD_CLIENT_ID` (the client bundle needs it).
+2. After the first deploy, open the Worker's **Settings → Variables and Secrets** and add:
+   - `VITE_DISCORD_CLIENT_ID` as text.
+   - `DISCORD_CLIENT_SECRET` and `DISCORD_BOT_TOKEN` as secrets.
+
+   `keep_vars` in `wrangler.jsonc` stops later deploys from erasing them.
+3. In the Discord Developer Portal, map `/` to `terrest.<your-subdomain>.workers.dev`.
+
+`DEV_LOGIN` is `false` in production (set in `wrangler.jsonc`): opening the app
+outside Discord shows "Open Terrest in Discord" instead of the test login. To
+deploy from your own machine instead, run `npx wrangler login` once, then `npm run deploy`.
+
+The free plan has daily limits on requests and Durable Object usage. Past a
+limit, requests fail until the next day (00:00 UTC) instead of being billed.
 
 ### How players are verified
 
@@ -118,5 +138,4 @@ never join a real Discord table, even with a guessed instance id.
 
 ## Ideas for next steps
 
-- Persist rooms (SQLite or Redis) so games survive restarts.
 - Mixed dice pools (e.g. `1d20 + 2d6`), advantage/disadvantage, and saved rolls.

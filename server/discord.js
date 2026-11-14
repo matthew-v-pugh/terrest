@@ -1,16 +1,15 @@
 // Verifies that someone joining a room is a real Discord user, signed in to
 // this app, and currently connected to the activity instance they claim.
+// `env` holds the Worker's variables and secrets.
 import { GameError } from './validate.js';
 
 const API = 'https://discord.com/api/v10';
-const CLIENT_ID = process.env.VITE_DISCORD_CLIENT_ID;
-const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 
-export const canVerifyInstances = !!(CLIENT_ID && BOT_TOKEN);
+export const canVerifyInstances = (env) => !!(env.VITE_DISCORD_CLIENT_ID && env.DISCORD_BOT_TOKEN);
 
 // Discord instance ids are short opaque strings; anything else is refused
 // before it gets near a URL.
-const INSTANCE_RE = /^[A-Za-z0-9_-]{1,100}$/;
+export const INSTANCE_RE = /^[A-Za-z0-9_-]{1,100}$/;
 // A cached member list is trusted for this long before it is refetched.
 const CACHE_TTL_MS = 30_000;
 // Refetch at most this often per instance, so repeated join attempts from
@@ -32,7 +31,8 @@ async function discordGet(path, authorization) {
 
 // Resolves an OAuth access token to its user, and checks the token was issued
 // to this app (a token from some other app would otherwise pass as "signed in").
-export async function identifyDiscordUser(accessToken) {
+export async function identifyDiscordUser(env, accessToken) {
+  const CLIENT_ID = env.VITE_DISCORD_CLIENT_ID;
   if (!CLIENT_ID) throw new GameError('The server is missing its Discord client ID.');
   const res = await discordGet('/oauth2/@me', `Bearer ${accessToken}`);
   if (!res.ok) throw new GameError('Discord sign-in failed.');
@@ -42,10 +42,11 @@ export async function identifyDiscordUser(accessToken) {
   return { id: u.id, username: u.global_name || u.username, avatar: u.avatar ?? null };
 }
 
-async function fetchInstanceUsers(instanceId) {
+async function fetchInstanceUsers(env, instanceId) {
+  const CLIENT_ID = env.VITE_DISCORD_CLIENT_ID;
   const res = await discordGet(
     `/applications/${CLIENT_ID}/activity-instances/${encodeURIComponent(instanceId)}`,
-    `Bot ${BOT_TOKEN}`,
+    `Bot ${env.DISCORD_BOT_TOKEN}`,
   );
   if (res.status === 404) return new Set();
   if (!res.ok) {
@@ -64,8 +65,8 @@ function pruneCache(now) {
 }
 
 // Throws unless `userId` is currently connected to the activity instance.
-export async function requireInstanceMember(instanceId, userId) {
-  if (!canVerifyInstances) {
+export async function requireInstanceMember(env, instanceId, userId) {
+  if (!canVerifyInstances(env)) {
     throw new GameError('The server is not set up to verify Discord players (DISCORD_BOT_TOKEN is missing).');
   }
   if (!INSTANCE_RE.test(instanceId)) throw new GameError('Unknown activity instance.');
@@ -78,7 +79,7 @@ export async function requireInstanceMember(instanceId, userId) {
   // is already running or one finished very recently.
   if (!entry?.pending && !(entry && now - entry.at < MIN_REFETCH_MS)) {
     pruneCache(now);
-    const pending = fetchInstanceUsers(instanceId);
+    const pending = fetchInstanceUsers(env, instanceId);
     entry = { users: entry?.users ?? new Set(), at: entry?.at ?? 0, pending };
     instances.set(instanceId, entry);
     try {

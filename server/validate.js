@@ -1,6 +1,6 @@
 // Everything a client sends is untrusted: these helpers coerce input into the
 // shapes the room expects, clamping numbers and trimming strings.
-import { randomUUID } from 'node:crypto';
+import { randomUUID } from './random.js';
 import {
   BACKGROUNDS, DEFAULT_PLAYER_CONTROLS, EQUIPMENT_SLOTS, GAME_TYPES, PLAYER_CONTROLS, PORTRAITS, TABLE_PRESETS,
 } from '../shared/presets.js';
