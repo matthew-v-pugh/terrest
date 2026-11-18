@@ -15,15 +15,41 @@ export function DiceTray() {
   const [modifier, setModifier] = useState(0);
   const [label, setLabel] = useState('');
   const [hidden, setHidden] = useState(false);
+  // Collapsed by default so the log gets the room; the bar still rolls in one click.
+  const [open, setOpen] = useState(false);
 
   function roll(e) {
     e.preventDefault();
     send('roll', { sides, count, modifier, label, hidden: isStoryteller && hidden });
   }
 
+  const formula = `${count}d${sides}${modifier ? (modifier > 0 ? `+${modifier}` : modifier) : ''}`;
+
   return (
-    <form className="dice-tray" onSubmit={roll}>
-      <h3>Dice</h3>
+    <form className={`dice-tray${open ? ' open' : ''}`} onSubmit={roll}>
+      <div className="dice-bar">
+        <button type="button" className="dice-toggle" onClick={() => setOpen(!open)} aria-expanded={open} title={open ? 'Hide dice options' : 'Choose dice, modifier and label'}>
+          <Die sides={sides} size={30} />
+          <span className="dice-toggle-text">
+            <strong>{formula}</strong>
+            {(label || (isStoryteller && hidden)) && (
+              <span className="muted">{[label, isStoryteller && hidden && 'secret'].filter(Boolean).join(' · ')}</span>
+            )}
+          </span>
+          <span className="dice-chevron" aria-hidden>{open ? '▴' : '▾'}</span>
+        </button>
+        <button className="btn primary roll-btn">Roll</button>
+      </div>
+      {open && <DiceOptions {...{ sides, setSides, count, setCount, modifier, setModifier, label, setLabel, hidden, setHidden, isStoryteller }} />}
+    </form>
+  );
+}
+
+function DiceOptions({
+  sides, setSides, count, setCount, modifier, setModifier, label, setLabel, hidden, setHidden, isStoryteller,
+}) {
+  return (
+    <div className="dice-options-panel">
       <div className="dice-picker">
         {DICE.map((d) => (
           <button type="button" key={d} className={`dice-pick${sides === d ? ' selected' : ''}`} onClick={() => setSides(d)} title={`d${d}`}>
@@ -43,10 +69,7 @@ export function DiceTray() {
       </div>
       <input className="dice-label" value={label} maxLength={40} placeholder="What's this roll for? (optional)" onChange={(e) => setLabel(e.target.value)} />
       {isStoryteller && <Toggle checked={hidden} onChange={setHidden} label="Roll in secret" />}
-      <button className="btn primary roll-btn">
-        Roll {count}d{sides}{modifier ? (modifier > 0 ? `+${modifier}` : modifier) : ''}
-      </button>
-    </form>
+    </div>
   );
 }
 

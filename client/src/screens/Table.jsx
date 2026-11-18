@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BACKGROUNDS, GAME_TYPES } from '@shared/presets.js';
 import CharacterSheet from '../components/CharacterSheet.jsx';
 import ChatBox from '../components/ChatBox.jsx';
@@ -16,6 +16,7 @@ export default function Table() {
   const { room, me, you, scene, isStoryteller, send } = useGame();
   const [selectedId, setSelectedId] = useState(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [fullScreen, setFullScreen] = useState(false);
   // Creatures belong to the scene's biome; at the table they can also be turned off.
   const biome = scene?.background?.type === 'upload' ? 'custom' : scene?.background?.id;
   const [creature, nextCreature] = useCreatureChoice(biome, true);
@@ -29,9 +30,20 @@ export default function Table() {
   ];
   const selected = players.find((m) => m.id === selectedId);
 
+  // Esc leaves full screen, unless it's closing a sheet or used in a text field.
+  useEffect(() => {
+    if (!fullScreen || selected) return undefined;
+    const onKey = (e) => {
+      if (e.key !== 'Escape' || e.target.closest?.('input, textarea, select')) return;
+      setFullScreen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [fullScreen, selected]);
+
   return (
-    <div className="table-screen" style={{ background: backgroundCss(scene?.background) }}>
-      <header className="topbar">
+    <div className={`table-screen${fullScreen ? ' full' : ''}`} style={{ background: backgroundCss(scene?.background) }}>
+      {!fullScreen && <header className="topbar">
         <div className="topbar-title">
           <strong>{GAME_TYPES[room.config.gameType]?.label}</strong>
           <span className="muted">· {layerLabel(scene?.background, BACKGROUNDS)}</span>
@@ -47,7 +59,7 @@ export default function Table() {
           )}
           <button className="btn small ghost" onClick={() => send('releaseRole')}>Leave seat</button>
         </div>
-      </header>
+      </header>}
 
       <div className="table-layout">
         <div className="table-area">
@@ -56,6 +68,14 @@ export default function Table() {
           </div>
           {creature !== 'none' && <Creature kind={creature} />}
           <CreatureButton choice={creature} onNext={nextCreature} />
+          <button
+            type="button"
+            className="btn small full-screen-btn"
+            onClick={() => setFullScreen(!fullScreen)}
+            title={fullScreen ? 'Show the top bar again (Esc)' : 'Hide the top bar to give the table more room'}
+          >
+            {fullScreen ? 'Exit full screen' : 'Full screen'}
+          </button>
           {seats.map((seat, i) => {
             const angle = -Math.PI / 2 + (2 * Math.PI * i) / seats.length;
             const style = { left: `${50 + 40 * Math.cos(angle)}%`, top: `${50 + 40 * Math.sin(angle)}%` };
