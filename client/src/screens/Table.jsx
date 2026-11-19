@@ -1,13 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BACKGROUNDS, GAME_TYPES } from '@shared/presets.js';
 import CharacterSheet from '../components/CharacterSheet.jsx';
 import ChatBox from '../components/ChatBox.jsx';
 import Creature, { CreatureButton, useCreatureChoice } from '../components/Creature.jsx';
 import { Modal, Portrait, ResourceBar } from '../components/common.jsx';
-import { DiceTray, RollDisplay } from '../components/Dice.jsx';
+import { DiceTray, RollDisplay, ThrownDice } from '../components/Dice.jsx';
+import { measureTable } from '../components/diceThrow.js';
 import PlayerControlsList from '../components/PlayerControls.jsx';
 import ScenePicker from '../components/ScenePicker.jsx';
 import TableLog from '../components/TableLog.jsx';
+import { setTableMeasure } from '../components/rollReveal.js';
 import {
   backgroundCss, layerLabel, tableCss, useGame,
 } from '../game.js';
@@ -29,6 +31,14 @@ export default function Table() {
     ...players.map((member) => ({ member })),
   ];
   const selected = players.find((m) => m.id === selectedId);
+
+  // Dice are thrown from the roller's seat, so the throw needs to measure the table.
+  const areaRef = useRef(null);
+  const seatIds = seats.map((s) => s.member.id).join(' ');
+  useEffect(() => {
+    const ids = seatIds.split(' ');
+    return setTableMeasure(() => measureTable(areaRef.current, ids));
+  }, [seatIds]);
 
   // Esc leaves full screen, unless it's closing a sheet or used in a text field.
   useEffect(() => {
@@ -62,7 +72,7 @@ export default function Table() {
       </header>}
 
       <div className="table-layout">
-        <div className="table-area">
+        <div className="table-area" ref={areaRef}>
           <div className="table-surface" style={{ background: tableCss(scene?.table) }}>
             <RollDisplay />
           </div>
@@ -83,6 +93,7 @@ export default function Table() {
               ? <StorytellerSeat key={seat.member.id} member={seat.member} style={style} />
               : <PlayerSeat key={seat.member.id} member={seat.member} style={style} isMe={seat.member.id === you} onClick={() => setSelectedId(seat.member.id)} />;
           })}
+          <ThrownDice />
           {!players.length && <div className="table-empty muted">Players will appear around the table once they've made their characters.</div>}
         </div>
 

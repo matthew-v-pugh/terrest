@@ -391,6 +391,9 @@ const handlers = {
     const count = clampInt(msg.count, 1, 20, 1);
     const modifier = clampInt(msg.modifier, -99, 99, 0);
     const results = Array.from({ length: count }, () => randomInt(1, sides + 1));
+    // How hard the dice were thrown (0 to 1), so everyone sees the same kind of
+    // throw. It only shapes the animation, never the results.
+    const power = Number(msg.power);
     room.pushLog({
       id: randomUUID(),
       kind: 'roll',
@@ -400,6 +403,7 @@ const handlers = {
       modifier,
       results,
       total: results.reduce((a, b) => a + b, 0) + modifier,
+      power: Number.isFinite(power) ? Math.round(Math.min(1, Math.max(0, power)) * 100) / 100 : undefined,
       label: str(msg.label, 40),
       hidden: room.storytellerId === me.id && !!msg.hidden,
       revealed: false,
